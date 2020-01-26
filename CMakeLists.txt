@@ -3,6 +3,6 @@ project(libcupp_proposal LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_executable(libcupp_proposal main.cu cuda/numeric cuda/detail/__reduce)
+add_executable(libcupp_proposal main.cu cuda/numeric cuda/algorithm cuda/detail/__reduce)
 target_include_directories(libcupp_proposal PRIVATE ${CUDA_INCLUDE_DIRS})
 target_compile_options(libcupp_proposal PUBLIC $<$<COMPILE_LANGUAGE:CUDA>:--expt-extended-lambda -g -std=c++14 -gencode arch=compute_75,code=sm_75>)

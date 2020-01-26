@@ -1,0 +1,12 @@
+//
+// Created by egi on 1/26/20.
+//
+
+#ifndef LIBCUPP_PROPOSAL_CUDA_ALGORITHM_H
+#define LIBCUPP_PROPOSAL_CUDA_ALGORITHM_H
+
+namespace cuda {
+
+}
+
+#endif //LIBCUPP_PROPOSAL_CUDA_ALGORITHM_H
