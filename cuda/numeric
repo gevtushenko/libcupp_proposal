@@ -16,16 +16,22 @@ enum thread_scope {
   thread_scope_warp
 };
 
-/**
- * @brief Reduce values in a range.
- *
- */
-template<thread_scope=thread_scope_warp, typename _RandomAccessIterator, typename _Tp, typename _BinaryOperation>
-__device__ inline _Tp
-reduce(_RandomAccessIterator __first, _RandomAccessIterator __last, _Tp __init, _BinaryOperation __binary_op)
-{
-  return __reduce_warp(__first, __last, __init, __binary_op);
-}
+template<typename _Tp, typename _ReducePolicy = typename std::conditional<std::is_same<int, _Tp>::value,
+                                                                          __warp_shfl_reduce<_Tp>,
+                                                                          __warp_shrd_reduce<_Tp>>::type>
+class warp_reduce : public _ReducePolicy {
+public:
+  using _ReducePolicy::_ReducePolicy;
+
+  template<thread_scope=thread_scope_warp, typename _RandomAccessIterator, typename _BinaryOperation>
+  __device__ inline _Tp
+  operator ()(_RandomAccessIterator __first, _RandomAccessIterator __last, _Tp __init, _BinaryOperation __binary_op)
+  {
+    for (__first += lane_id(); __first < __last; __first += warpSize)
+      __init = __binary_op (__init, *__first);
+    return __reduce_value (__init, __binary_op);
+  }
+};
 
 }
 

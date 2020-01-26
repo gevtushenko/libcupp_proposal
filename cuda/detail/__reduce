@@ -5,6 +5,8 @@
 #ifndef LIBCUPP_PROPOSAL_CUDA_DETAIL_ACCUMULATE_H
 #define LIBCUPP_PROPOSAL_CUDA_DETAIL_ACCUMULATE_H
 
+#include <type_traits>
+
 #define __FULL_WARP_MASK 0xffffffff
 
 inline __device__ unsigned lane_id()
@@ -14,18 +16,33 @@ inline __device__ unsigned lane_id()
   return ret;
 }
 
-template<typename _RandomAccessIterator, typename _Tp, typename _BinaryOperation>
-__device__ inline _Tp
-__reduce_warp (_RandomAccessIterator __first, _RandomAccessIterator __last, _Tp __init, _BinaryOperation __binary_op)
+template <typename _Tp>
+class __warp_shfl_reduce
 {
-  for (__first += lane_id(); __first < __last; __first += warpSize)
-    __init = __binary_op (__init, *__first);
+public:
+  __warp_shfl_reduce () = default;
 
-  // TODO __shfl_xor_sync since CC 3.X
-  for (int i = warpSize / 2; i > 0; i /= 2)
-    __init = __binary_op (__init, __shfl_xor_sync (__FULL_WARP_MASK, __init, i, warpSize));
+  template <typename _BinaryOperation>
+  __device__ _Tp __reduce_value (_Tp __val, _BinaryOperation __binary_op)
+  {
+    for (int i = warpSize / 2; i > 0; i /= 2)
+      __val = __binary_op (__val, __shfl_xor_sync (__FULL_WARP_MASK, __val, i, warpSize));
+    return __val;
+  }
+};
 
-  return __init;
-}
+template <typename _Tp>
+class __warp_shrd_reduce {
+  _Tp *warp_shared_workspace;
+public:
+  __warp_shrd_reduce() = delete;
+  __warp_shrd_reduce(_Tp *warp_shared_workspace_arg) : warp_shared_workspace (warp_shared_workspace_arg) {}
+
+  template <typename _BinaryOperation>
+  __device__ _Tp __reduce_value (_Tp __val, _BinaryOperation __binary_op)
+  {
+
+  }
+};
 
 #endif //LIBCUPP_PROPOSAL_CUDA_DETAIL_ACCUMULATE_H

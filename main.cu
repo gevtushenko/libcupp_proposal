@@ -10,7 +10,8 @@
 template <cuda::thread_scope scope, typename data_type>
 __global__ void perform_reduce (const data_type *array, unsigned int n, data_type *result)
 {
-  int value = cuda::reduce<scope>(array, array + n, data_type {}, [] __device__ (const data_type &a, const data_type &b) { return a + b; });
+  cuda::warp_reduce<data_type> reduce;
+  data_type value = reduce (array, array + n, data_type {}, [] __device__ (const data_type &a, const data_type &b) { return a + b; });
 
   if (threadIdx.x < n)
     result[threadIdx.x] = value;
@@ -77,7 +78,7 @@ static_assert(std::is_trivially_copyable<user_type>::value);
 
 int main ()
 {
-  perform_single_value_warp_size_test(42);
+  perform_single_value_warp_size_test(int(42));
   // perform_single_value_warp_size_test(user_type {4, 2});
 
   return 0;
