@@ -1,0 +1,31 @@
+//
+// Created by egi on 1/26/20.
+//
+
+#ifndef LIBCUPP_PROPOSAL_CUDA_DETAIL_ACCUMULATE_H
+#define LIBCUPP_PROPOSAL_CUDA_DETAIL_ACCUMULATE_H
+
+#define __FULL_WARP_MASK 0xffffffff
+
+inline __device__ unsigned lane_id()
+{
+  unsigned ret;
+  asm volatile ("mov.u32 %0, %laneid;" : "=r"(ret));
+  return ret;
+}
+
+template<typename _RandomAccessIterator, typename _Tp, typename _BinaryOperation>
+__device__ inline _Tp
+__reduce_warp (_RandomAccessIterator __first, _RandomAccessIterator __last, _Tp __init, _BinaryOperation __binary_op)
+{
+  for (__first += lane_id(); __first < __last; __first += warpSize)
+    __init = __binary_op (__init, *__first);
+
+  // TODO __shfl_xor_sync since CC 3.X
+  for (int i = warpSize / 2; i > 0; i /= 2)
+    __init = __binary_op (__init, __shfl_xor_sync (__FULL_WARP_MASK, __init, i, warpSize));
+
+  return __init;
+}
+
+#endif //LIBCUPP_PROPOSAL_CUDA_DETAIL_ACCUMULATE_H

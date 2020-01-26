@@ -1,0 +1,32 @@
+//
+// Created by egi on 1/26/20.
+//
+
+#ifndef LIBCUPP_PROPOSAL_NUMERIC_H
+#define LIBCUPP_PROPOSAL_NUMERIC_H
+
+#include "detail/__reduce"
+
+namespace cuda {
+
+enum thread_scope {
+  thread_scope_system,
+  thread_scope_device,
+  thread_scope_block,
+  thread_scope_warp
+};
+
+/**
+ * @brief Reduce values in a range.
+ *
+ */
+template<thread_scope=thread_scope_warp, typename _RandomAccessIterator, typename _Tp, typename _BinaryOperation>
+__device__ inline _Tp
+reduce(_RandomAccessIterator __first, _RandomAccessIterator __last, _Tp __init, _BinaryOperation __binary_op)
+{
+  return __reduce_warp(__first, __last, __init, __binary_op);
+}
+
+}
+
+#endif //LIBCUPP_PROPOSAL_NUMERIC_H
