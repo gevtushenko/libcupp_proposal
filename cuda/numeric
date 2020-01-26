@@ -9,13 +9,6 @@
 
 namespace cuda {
 
-enum thread_scope {
-  thread_scope_system,
-  thread_scope_device,
-  thread_scope_block,
-  thread_scope_warp
-};
-
 template<typename T, typename... Rest>
 struct is_any : std::false_type {};
 
@@ -36,6 +29,16 @@ constexpr bool check_compute_capability ()
 #endif
 }
 
+/**
+ * @brief Class for parallel reduse within warp
+ *
+ * Reduce uses a binary combining operator to compute a single aggregate from an array of elements. The
+ * number of entrant threads must be equal to warpSize. After reduce, the result is the same in all threads.
+ * The default binary combining operator is the sum.
+ *
+ * @tparam _Tp Reduced data type
+ * @tparam _ReducePolicy Policy for warp threads data exchange
+ */
 template<
     typename _Tp,
     typename _ReducePolicy = typename std::conditional<
@@ -55,6 +58,10 @@ class warp_reduce : public _ReducePolicy {
 public:
   using _ReducePolicy::_ReducePolicy;
 
+  /**
+   * @tparam _BinaryOperation Binary combining function object thata will be applied in unspecified order.
+   *                          The behaviour is undefined if _BinaryOperation modifies any element.
+   */
   template<typename _RandomAccessIterator, typename _BinaryOperation = detail::__default_reduce_binary_op<_Tp>>
   __device__ inline _Tp
   operator ()(_RandomAccessIterator __first, _RandomAccessIterator __last, _Tp __init, _BinaryOperation __binary_op = {})
@@ -64,6 +71,10 @@ public:
     return __reduce_value (__init, __binary_op);
   }
 
+  /**
+   * @tparam _BinaryOperation Binary combining function object thata will be applied in unspecified order.
+   *                          The behaviour is undefined if _BinaryOperation modifies any element.
+   */
   template<typename _BinaryOperation = detail::__default_reduce_binary_op<_Tp>>
   __device__ inline _Tp
   operator ()(_Tp __val, _BinaryOperation __binary_op = {})
@@ -102,6 +113,15 @@ public:
 
 };
 
+/**
+ * @brief Class for parallel reduse within threads block
+ *
+ * Reduce uses a binary combining operator to compute a single aggregate from an array of elements.
+ * The threads number must be multiple of warpSize. After reduce, the result is the same in all threads.
+ *
+ * @tparam _Tp Reduced data type
+ * @tparam _ReducePolicy Policy for warp threads data exchange
+ */
 template<
     typename _Tp,
     typename _IndexingPolicy=__default_indexing_policy_1D,

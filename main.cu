@@ -27,7 +27,7 @@ struct helper<data_type, false>
 };
 
 
-template <cuda::thread_scope scope, typename data_type>
+template <typename data_type>
 __global__ void perform_reduce (const data_type *array, unsigned int n, data_type *result)
 {
   extern __shared__ char cache_storage[];
@@ -40,7 +40,7 @@ __global__ void perform_reduce (const data_type *array, unsigned int n, data_typ
     result[threadIdx.x] = value;
 }
 
-template <cuda::thread_scope scope, typename data_type>
+template <typename data_type>
 __global__ void perform_value_reduce (const data_type *array, unsigned int n, data_type *result)
 {
   extern __shared__ char cache_storage[];
@@ -53,7 +53,7 @@ __global__ void perform_value_reduce (const data_type *array, unsigned int n, da
     result[threadIdx.x] = value;
 }
 
-template <cuda::thread_scope scope, typename data_type>
+template <typename data_type>
 __global__ void perform_block_value_reduce (const data_type *array, unsigned int n, data_type *result)
 {
   extern __shared__ char cache_storage[];
@@ -86,14 +86,14 @@ void expect_eq (
 
   if (threads_per_block == 32)
   {
-    perform_reduce<cuda::thread_scope_warp><<<blocks_count, threads_per_block, shared_mem_size>>>(device_input, input.size (), device_result);
+    perform_reduce<<<blocks_count, threads_per_block, shared_mem_size>>>(device_input, input.size (), device_result);
     cudaMemcpy (output.data (), device_result, input.size () * sizeof (data_type), cudaMemcpyDeviceToHost);
 
     for (size_t i = 0; i < input.size (); i++)
       if (excected_output[i] != output[i])
         throw std::runtime_error ("Error: unexpected value at " + std::to_string (i));
 
-    perform_value_reduce<cuda::thread_scope_warp><<<blocks_count, threads_per_block, shared_mem_size>>>(device_input, input.size (), device_result);
+    perform_value_reduce<<<blocks_count, threads_per_block, shared_mem_size>>>(device_input, input.size (), device_result);
     std::fill (output.begin (), output.end (), data_type {});
 
     cudaMemcpy (output.data (), device_result, input.size () * sizeof (data_type), cudaMemcpyDeviceToHost);
@@ -103,7 +103,7 @@ void expect_eq (
         throw std::runtime_error ("Error: unexpected value at " + std::to_string (i));
   }
 
-  perform_block_value_reduce<cuda::thread_scope_warp><<<blocks_count, threads_per_block, shared_mem_size>>>(device_input, input.size (), device_result);
+  perform_block_value_reduce<<<blocks_count, threads_per_block, shared_mem_size>>>(device_input, input.size (), device_result);
   std::fill (output.begin (), output.end (), data_type {});
 
   cudaMemcpy (output.data (), device_result, input.size () * sizeof (data_type), cudaMemcpyDeviceToHost);
@@ -293,7 +293,7 @@ void perform_benchmark ()
 
 int main ()
 {
-#if 0
+#if 1
   perform_tests(42);
   perform_tests(42u);
   perform_tests(42ll);
