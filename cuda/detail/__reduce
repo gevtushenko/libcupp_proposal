@@ -25,10 +25,13 @@ public:
   template <typename _BinaryOperation>
   __device__ _Tp __reduce_value (_Tp __val, _BinaryOperation __binary_op)
   {
-    for (int i = warpSize / 2; i > 0; i /= 2)
-      __val = __binary_op (__val, __shfl_xor_sync (__FULL_WARP_MASK, __val, i, warpSize));
+    for (int s = warpSize / 2; s > 0; s >>= 1)
+      __val = __binary_op (__val, __shfl_xor_sync (__FULL_WARP_MASK, __val, s, warpSize));
     return __val;
   }
+
+public:
+  static constexpr bool use_shared = false;
 };
 
 template <typename _Tp>
@@ -36,13 +39,27 @@ class __warp_shrd_reduce {
   _Tp *warp_shared_workspace;
 public:
   __warp_shrd_reduce() = delete;
-  __warp_shrd_reduce(_Tp *warp_shared_workspace_arg) : warp_shared_workspace (warp_shared_workspace_arg) {}
+  __device__ __warp_shrd_reduce(_Tp *warp_shared_workspace_arg) : warp_shared_workspace (warp_shared_workspace_arg) {}
 
   template <typename _BinaryOperation>
   __device__ _Tp __reduce_value (_Tp __val, _BinaryOperation __binary_op)
   {
+    const int lid = lane_id();
+    warp_shared_workspace[lid] = __val;
+    __syncwarp();
 
+    for (int s = warpSize / 2; s > 0; s >>= 1) {
+      if (lid < s) {
+        warp_shared_workspace[lid] = __binary_op(warp_shared_workspace[lid], warp_shared_workspace[lid + s]);
+      }
+      __syncwarp ();
+    }
+
+    return warp_shared_workspace[0];
   }
+
+public:
+  static constexpr bool use_shared = true;
 };
 
 #endif //LIBCUPP_PROPOSAL_CUDA_DETAIL_ACCUMULATE_H

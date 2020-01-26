@@ -7,10 +7,32 @@
 
 #include "cuda/numeric"
 
+template <typename data_type, int use_shared>
+struct helper
+{
+  static __device__ cuda::warp_reduce<data_type> get_sync(data_type *shared_data)
+  {
+    return cuda::warp_reduce<data_type> (shared_data);
+  }
+};
+
+template <typename data_type>
+struct helper<data_type, false>
+{
+  static __device__ cuda::warp_reduce<data_type> get_sync(data_type *)
+  {
+    return cuda::warp_reduce<data_type> ();
+  }
+};
+
+
 template <cuda::thread_scope scope, typename data_type>
 __global__ void perform_reduce (const data_type *array, unsigned int n, data_type *result)
 {
-  cuda::warp_reduce<data_type> reduce;
+  __shared__ char cache_storage[32 * sizeof (data_type)];
+  data_type *cache = reinterpret_cast<data_type*> (cache_storage);
+
+  cuda::warp_reduce<data_type> reduce = helper<data_type, cuda::warp_reduce<data_type>::use_shared>::get_sync(cache);
   data_type value = reduce (array, array + n, data_type {}, [] __device__ (const data_type &a, const data_type &b) { return a + b; });
 
   if (threadIdx.x < n)
@@ -66,7 +88,12 @@ class user_type
   unsigned long long int y {};
 public:
   user_type () = default;
-  user_type (unsigned long long int x_arg, unsigned long long int y_arg) : x (x_arg), y (y_arg) {}
+  __device__ __host__ user_type (unsigned long long int x_arg, unsigned long long int y_arg) : x (x_arg), y (y_arg) {}
+
+  friend bool operator !=(const user_type &lhs, const user_type &rhs)
+  {
+    return lhs.x != rhs.x || lhs.y != rhs.y;
+  }
 
   friend __device__ user_type operator+ (const user_type &lhs, const user_type &rhs)
   {
@@ -79,7 +106,7 @@ static_assert(std::is_trivially_copyable<user_type>::value);
 int main ()
 {
   perform_single_value_warp_size_test(int(42));
-  // perform_single_value_warp_size_test(user_type {4, 2});
+  perform_single_value_warp_size_test(user_type {4, 2});
 
   return 0;
 }
