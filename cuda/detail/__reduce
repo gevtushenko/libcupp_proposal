@@ -9,12 +9,21 @@
 
 #define __FULL_WARP_MASK 0xffffffff
 
-inline __device__ unsigned lane_id()
-{
+namespace cuda {
+namespace detail {
+
+inline __device__ unsigned lane_id() {
   unsigned ret;
   asm volatile ("mov.u32 %0, %laneid;" : "=r"(ret));
   return ret;
 }
+
+template <typename _Tp>
+class __default_reduce_binary_op
+{
+public:
+  __device__ _Tp operator ()(const _Tp &__lhs, const _Tp &__rhs) { return __lhs + __rhs; }
+};
 
 template <typename _Tp>
 class __warp_shfl_reduce
@@ -62,5 +71,8 @@ public:
 public:
   static constexpr bool use_shared = true;
 };
+
+} // detail
+} // cuda
 
 #endif //LIBCUPP_PROPOSAL_CUDA_DETAIL_ACCUMULATE_H

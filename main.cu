@@ -33,7 +33,20 @@ __global__ void perform_reduce (const data_type *array, unsigned int n, data_typ
   data_type *cache = reinterpret_cast<data_type*> (cache_storage);
 
   cuda::warp_reduce<data_type> reduce = helper<data_type, cuda::warp_reduce<data_type>::use_shared>::get_sync(cache);
-  data_type value = reduce (array, array + n, data_type {}, [] __device__ (const data_type &a, const data_type &b) { return a + b; });
+  data_type value = reduce (array, array + n, data_type {});
+
+  if (threadIdx.x < n)
+    result[threadIdx.x] = value;
+}
+
+template <cuda::thread_scope scope, typename data_type>
+__global__ void perform_value_reduce (const data_type *array, unsigned int n, data_type *result)
+{
+  __shared__ char cache_storage[32 * sizeof (data_type)];
+  data_type *cache = reinterpret_cast<data_type*> (cache_storage);
+
+  cuda::warp_reduce<data_type> reduce = helper<data_type, cuda::warp_reduce<data_type>::use_shared>::get_sync(cache);
+  data_type value = reduce (array[threadIdx.x]);
 
   if (threadIdx.x < n)
     result[threadIdx.x] = value;
@@ -57,6 +70,15 @@ void expect_eq (
   perform_reduce<cuda::thread_scope_warp><<<blocks_count, threads_per_block>>>(device_input, input.size (), device_result);
 
   std::vector<data_type> output (input.size (), data_type {});
+  cudaMemcpy (output.data (), device_result, input.size () * sizeof (data_type), cudaMemcpyDeviceToHost);
+
+  for (size_t i = 0; i < input.size (); i++)
+    if (excected_output[i] != output[i])
+      throw std::runtime_error ("Error: unexpected value at " + std::to_string (i));
+
+  perform_value_reduce<cuda::thread_scope_warp><<<blocks_count, threads_per_block>>>(device_input, input.size (), device_result);
+  std::fill (output.begin (), output.end (), data_type {});
+
   cudaMemcpy (output.data (), device_result, input.size () * sizeof (data_type), cudaMemcpyDeviceToHost);
 
   for (size_t i = 0; i < input.size (); i++)

@@ -35,19 +35,26 @@ template<typename _Tp, typename _ReducePolicy = typename std::conditional<is_any
                                                                                  unsigned long long,
                                                                                  float,
                                                                                  double>::value,
-                                                                          __warp_shfl_reduce<_Tp>,
-                                                                          __warp_shrd_reduce<_Tp>>::type>
+                                                                          detail::__warp_shfl_reduce<_Tp>,
+                                                                          detail::__warp_shrd_reduce<_Tp>>::type>
 class warp_reduce : public _ReducePolicy {
 public:
   using _ReducePolicy::_ReducePolicy;
 
-  template<thread_scope=thread_scope_warp, typename _RandomAccessIterator, typename _BinaryOperation>
+  template<typename _RandomAccessIterator, typename _BinaryOperation = detail::__default_reduce_binary_op<_Tp>>
   __device__ inline _Tp
-  operator ()(_RandomAccessIterator __first, _RandomAccessIterator __last, _Tp __init, _BinaryOperation __binary_op)
+  operator ()(_RandomAccessIterator __first, _RandomAccessIterator __last, _Tp __init, _BinaryOperation __binary_op = {})
   {
-    for (__first += lane_id(); __first < __last; __first += warpSize)
+    for (__first += detail::lane_id(); __first < __last; __first += warpSize)
       __init = __binary_op (__init, *__first);
     return __reduce_value (__init, __binary_op);
+  }
+
+  template<typename _BinaryOperation = detail::__default_reduce_binary_op<_Tp>>
+  __device__ inline _Tp
+  operator ()(_Tp __val, _BinaryOperation __binary_op = {})
+  {
+    return __reduce_value (__val, __binary_op);
   }
 };
 
