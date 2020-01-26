@@ -105,7 +105,12 @@ static_assert(std::is_trivially_copyable<user_type>::value);
 
 int main ()
 {
-  perform_single_value_warp_size_test(int(42));
+  perform_single_value_warp_size_test(42);
+  perform_single_value_warp_size_test(42u);
+  perform_single_value_warp_size_test(42ll);
+  perform_single_value_warp_size_test(42u);
+  perform_single_value_warp_size_test(42ul);
+  perform_single_value_warp_size_test(42ull);
   perform_single_value_warp_size_test(user_type {4, 2});
 
   return 0;

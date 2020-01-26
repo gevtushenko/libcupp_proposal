@@ -16,7 +16,25 @@ enum thread_scope {
   thread_scope_warp
 };
 
-template<typename _Tp, typename _ReducePolicy = typename std::conditional<std::is_same<int, _Tp>::value,
+template<typename T, typename... Rest>
+struct is_any : std::false_type {};
+
+template<typename T, typename First>
+struct is_any<T, First> : std::is_same<T, First> {};
+
+template<typename T, typename First, typename... Rest>
+struct is_any<T, First, Rest...> : std::integral_constant<bool, std::is_same<T, First>::value || is_any<T, Rest...>::value>
+{};
+
+template<typename _Tp, typename _ReducePolicy = typename std::conditional<is_any<_Tp,
+                                                                                 int,
+                                                                                 long,
+                                                                                 long long,
+                                                                                 unsigned int,
+                                                                                 unsigned long,
+                                                                                 unsigned long long,
+                                                                                 float,
+                                                                                 double>::value,
                                                                           __warp_shfl_reduce<_Tp>,
                                                                           __warp_shrd_reduce<_Tp>>::type>
 class warp_reduce : public _ReducePolicy {

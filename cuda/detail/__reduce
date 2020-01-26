@@ -25,8 +25,9 @@ public:
   template <typename _BinaryOperation>
   __device__ _Tp __reduce_value (_Tp __val, _BinaryOperation __binary_op)
   {
-    for (int s = warpSize / 2; s > 0; s >>= 1)
-      __val = __binary_op (__val, __shfl_xor_sync (__FULL_WARP_MASK, __val, s, warpSize));
+    for (int s = warpSize / 2; s > 0; s >>= 1) {
+      __val = __binary_op(__val, __shfl_xor_sync(__FULL_WARP_MASK, __val, s, warpSize));
+    }
     return __val;
   }
 
