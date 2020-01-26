@@ -72,6 +72,75 @@ public:
   }
 };
 
+template <typename _Tp, bool _UseSharedMemory>
+class __warp_reduce_default_dependency_injector;
+
+template <typename _Tp>
+class __warp_reduce_default_dependency_injector<_Tp, false>
+{
+public:
+  static __device__ warp_reduce<_Tp> construct_warp_reduce_object (_Tp *) { return {}; }
+};
+
+template <typename _Tp>
+class __warp_reduce_default_dependency_injector<_Tp, true>
+{
+public:
+  static __device__ warp_reduce<_Tp> construct_warp_reduce_object (_Tp *__warp_shared) { return {__warp_shared}; }
+};
+
+
+class __default_indexing_policy_1D {
+public:
+  static __device__ int get_blck_id () { return blockIdx.x; }
+  static __device__ int get_thrd_id () { return threadIdx.x; }
+  static __device__ int get_lane_id () { return threadIdx.x % warpSize; }
+  static __device__ int get_warp_id () { return threadIdx.x / warpSize; }
+
+  static __device__ int get_n_thrd_in_block () { return blockDim.x; }
+  static __device__ int get_n_warp_in_block () { return get_n_thrd_in_block() / warpSize; }
+
+};
+
+template<
+    typename _Tp,
+    typename _IndexingPolicy=__default_indexing_policy_1D,
+    typename _WarpReduceDependencyInjectionPolicy=__warp_reduce_default_dependency_injector<_Tp, warp_reduce<_Tp>::use_shared>>
+class block_reduce {
+  _Tp *block_shared_workspace;
+
+public:
+  explicit __device__ block_reduce (_Tp *block_shared_workspace_arg) : block_shared_workspace (block_shared_workspace_arg) { }
+
+  template<typename _BinaryOperation = detail::__default_reduce_binary_op<_Tp>>
+  __device__ inline _Tp
+  operator ()(_Tp __val, _BinaryOperation __binary_op = {})
+  {
+    const int bid = _IndexingPolicy::get_blck_id ();
+    const int tid = _IndexingPolicy::get_thrd_id ();
+    const int lid = tid % warpSize;
+
+    auto __warp_reduce = _WarpReduceDependencyInjectionPolicy::construct_warp_reduce_object (block_shared_workspace + bid * warpSize);
+    auto __warp_result = __warp_reduce (__val, __binary_op);
+    __syncthreads ();
+
+    if (lid == 0)
+      block_shared_workspace[bid] = __warp_result;
+    __syncthreads ();
+
+    for (int s = _IndexingPolicy::get_n_warp_in_block () / 2; s > 0; s >>= 1) {
+      if (tid < s) {
+        block_shared_workspace[tid] = __binary_op(block_shared_workspace[tid], block_shared_workspace[tid + s]);
+      }
+      __syncthreads ();
+    }
+
+    _Tp result = block_shared_workspace[0];
+    __syncthreads ();
+    return result;
+  }
+};
+
 }
 
 #endif //LIBCUPP_PROPOSAL_NUMERIC_H

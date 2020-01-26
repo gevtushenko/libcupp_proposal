@@ -65,7 +65,9 @@ public:
       __syncwarp ();
     }
 
-    return warp_shared_workspace[0];
+    _Tp result = warp_shared_workspace[0];
+    __syncwarp ();
+    return result;
   }
 
 public:
