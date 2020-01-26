@@ -124,6 +124,19 @@ public:
 };
 
 static_assert(std::is_trivially_copyable<user_type>::value);
+static_assert(cuda::warp_reduce<user_type>::use_shared == true);
+
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 300
+static_assert(cuda::warp_reduce<int>::use_shared == false);
+static_assert(cuda::warp_reduce<long>::use_shared == false);
+static_assert(cuda::warp_reduce<long long>::use_shared == false);
+static_assert(cuda::warp_reduce<unsigned int>::use_shared == false);
+static_assert(cuda::warp_reduce<unsigned long>::use_shared == false);
+static_assert(cuda::warp_reduce<unsigned long long>::use_shared == false);
+static_assert(cuda::warp_reduce<float>::use_shared == false);
+static_assert(cuda::warp_reduce<double>::use_shared == false);
+#endif
+
 
 int main ()
 {

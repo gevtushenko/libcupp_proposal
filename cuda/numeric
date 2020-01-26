@@ -26,17 +26,31 @@ template<typename T, typename First, typename... Rest>
 struct is_any<T, First, Rest...> : std::integral_constant<bool, std::is_same<T, First>::value || is_any<T, Rest...>::value>
 {};
 
-template<typename _Tp, typename _ReducePolicy = typename std::conditional<is_any<_Tp,
-                                                                                 int,
-                                                                                 long,
-                                                                                 long long,
-                                                                                 unsigned int,
-                                                                                 unsigned long,
-                                                                                 unsigned long long,
-                                                                                 float,
-                                                                                 double>::value,
-                                                                          detail::__warp_shfl_reduce<_Tp>,
-                                                                          detail::__warp_shrd_reduce<_Tp>>::type>
+template <int required_cc>
+constexpr bool check_compute_capability ()
+{
+#if defined(__CUDA_ARCH__)
+  return __CUDA_ARCH__ >= required_cc;
+#else
+  return false;
+#endif
+}
+
+template<
+    typename _Tp,
+    typename _ReducePolicy = typename std::conditional<
+        std::integral_constant<bool, is_any<_Tp,
+                                            int,
+                                            long,
+                                            long long,
+                                            unsigned int,
+                                            unsigned long,
+                                            unsigned long long,
+                                            float,
+                                            double>::value
+                                  && check_compute_capability<300>()>::value,
+                               detail::__warp_shfl_reduce<_Tp>,
+                               detail::__warp_shrd_reduce<_Tp>>::type>
 class warp_reduce : public _ReducePolicy {
 public:
   using _ReducePolicy::_ReducePolicy;
