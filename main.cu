@@ -29,7 +29,7 @@ struct helper<data_type, false>
 template <cuda::thread_scope scope, typename data_type>
 __global__ void perform_reduce (const data_type *array, unsigned int n, data_type *result)
 {
-  __shared__ char cache_storage[32 * sizeof (data_type)];
+  extern __shared__ char cache_storage[];
   data_type *cache = reinterpret_cast<data_type*> (cache_storage);
 
   cuda::warp_reduce<data_type> reduce = helper<data_type, cuda::warp_reduce<data_type>::use_shared>::get_sync(cache);
@@ -42,7 +42,7 @@ __global__ void perform_reduce (const data_type *array, unsigned int n, data_typ
 template <cuda::thread_scope scope, typename data_type>
 __global__ void perform_value_reduce (const data_type *array, unsigned int n, data_type *result)
 {
-  __shared__ char cache_storage[32 * sizeof (data_type)];
+  extern __shared__ char cache_storage[];
   data_type *cache = reinterpret_cast<data_type*> (cache_storage);
 
   cuda::warp_reduce<data_type> reduce = helper<data_type, cuda::warp_reduce<data_type>::use_shared>::get_sync(cache);
@@ -55,7 +55,7 @@ __global__ void perform_value_reduce (const data_type *array, unsigned int n, da
 template <cuda::thread_scope scope, typename data_type>
 __global__ void perform_block_value_reduce (const data_type *array, unsigned int n, data_type *result)
 {
-  __shared__ char cache_storage[32 * sizeof (data_type)];
+  extern __shared__ char cache_storage[];
   data_type *cache = reinterpret_cast<data_type*> (cache_storage);
 
   cuda::block_reduce<data_type> reduce (cache);
@@ -80,25 +80,29 @@ void expect_eq (
   cudaMemcpy (device_input, input.data (), input.size () * sizeof (data_type), cudaMemcpyHostToDevice);
 
   const int blocks_count = (input.size () + threads_per_block - 1) / threads_per_block;
-  perform_reduce<cuda::thread_scope_warp><<<blocks_count, threads_per_block>>>(device_input, input.size (), device_result);
-
+  const size_t shared_mem_size = threads_per_block * blocks_count * sizeof (data_type);
   std::vector<data_type> output (input.size (), data_type {});
-  cudaMemcpy (output.data (), device_result, input.size () * sizeof (data_type), cudaMemcpyDeviceToHost);
 
-  for (size_t i = 0; i < input.size (); i++)
-    if (excected_output[i] != output[i])
-      throw std::runtime_error ("Error: unexpected value at " + std::to_string (i));
+  if (threads_per_block == 32)
+  {
+    perform_reduce<cuda::thread_scope_warp><<<blocks_count, threads_per_block, shared_mem_size>>>(device_input, input.size (), device_result);
+    cudaMemcpy (output.data (), device_result, input.size () * sizeof (data_type), cudaMemcpyDeviceToHost);
 
-  perform_value_reduce<cuda::thread_scope_warp><<<blocks_count, threads_per_block>>>(device_input, input.size (), device_result);
-  std::fill (output.begin (), output.end (), data_type {});
+    for (size_t i = 0; i < input.size (); i++)
+      if (excected_output[i] != output[i])
+        throw std::runtime_error ("Error: unexpected value at " + std::to_string (i));
 
-  cudaMemcpy (output.data (), device_result, input.size () * sizeof (data_type), cudaMemcpyDeviceToHost);
+    perform_value_reduce<cuda::thread_scope_warp><<<blocks_count, threads_per_block, shared_mem_size>>>(device_input, input.size (), device_result);
+    std::fill (output.begin (), output.end (), data_type {});
 
-  for (size_t i = 0; i < input.size (); i++)
-    if (excected_output[i] != output[i])
-      throw std::runtime_error ("Error: unexpected value at " + std::to_string (i));
+    cudaMemcpy (output.data (), device_result, input.size () * sizeof (data_type), cudaMemcpyDeviceToHost);
 
-  perform_block_value_reduce<cuda::thread_scope_warp><<<blocks_count, threads_per_block>>>(device_input, input.size (), device_result);
+    for (size_t i = 0; i < input.size (); i++)
+      if (excected_output[i] != output[i])
+        throw std::runtime_error ("Error: unexpected value at " + std::to_string (i));
+  }
+
+  perform_block_value_reduce<cuda::thread_scope_warp><<<blocks_count, threads_per_block, shared_mem_size>>>(device_input, input.size (), device_result);
   std::fill (output.begin (), output.end (), data_type {});
 
   cudaMemcpy (output.data (), device_result, input.size () * sizeof (data_type), cudaMemcpyDeviceToHost);
@@ -126,12 +130,74 @@ void perform_single_value_warp_size_test (const data_type &magical_value)
   }
 }
 
+template <typename data_type>
+void perform_block_size_test (const data_type &magical_value)
+{
+  const int warpSize = 32;
+  for (int multiplier = 1024 / warpSize; multiplier > 0; multiplier /= warpSize)
+  {
+    const int threads_count = warpSize * multiplier;
+    std::vector<data_type> iv32 (threads_count, data_type {});
+    std::vector<data_type> ov32 (threads_count, magical_value);
+
+    for (int thread = 0; thread < threads_count; thread++)
+    {
+      iv32[thread] = magical_value;
+      expect_eq(iv32, ov32, threads_count);
+      iv32[thread] = data_type {};
+    }
+  }
+}
+
+template <typename data_type>
+void perform_multiple_value_warp_size_test ()
+{
+  const int warpSize = 32;
+  const int result = warpSize * (warpSize + 1) / 2;
+  std::vector<data_type> iv32 (warpSize);
+  std::vector<data_type> ov32 (warpSize, result);
+
+  for (int i = 0; i < warpSize; i++)
+    iv32[i] = i + 1;
+
+  expect_eq(iv32, ov32, warpSize);
+}
+
+template <typename data_type>
+void perform_multiple_value_block_size_test ()
+{
+  const int warpSize = 32;
+  for (int multiplier = 1024 / warpSize; multiplier > 0; multiplier /= warpSize)
+  {
+    const int threads_count = warpSize * multiplier;
+
+    const int result = threads_count * (threads_count + 1) / 2;
+    std::vector<data_type> iv32 (threads_count);
+    std::vector<data_type> ov32 (threads_count, result);
+
+    for (int i = 0; i < threads_count; i++)
+      iv32[i] = i + 1;
+
+    expect_eq(iv32, ov32, threads_count);
+  }
+}
+
+template <typename data_type>
+void perform_tests (const data_type &magical_value)
+{
+  perform_single_value_warp_size_test(magical_value);
+  perform_block_size_test(magical_value);
+
+  perform_multiple_value_warp_size_test<data_type> ();
+}
+
 class user_type
 {
   unsigned long long int x {};
   unsigned long long int y {};
 public:
   user_type () = default;
+  __device__ __host__ user_type (int i) : x (i), y (0ull) {}
   __device__ __host__ user_type (unsigned long long int x_arg, unsigned long long int y_arg) : x (x_arg), y (y_arg) {}
 
   friend bool operator !=(const user_type &lhs, const user_type &rhs)
@@ -162,13 +228,13 @@ static_assert(cuda::warp_reduce<double>::use_shared == false);
 
 int main ()
 {
-  perform_single_value_warp_size_test(42);
-  perform_single_value_warp_size_test(42u);
-  perform_single_value_warp_size_test(42ll);
-  perform_single_value_warp_size_test(42u);
-  perform_single_value_warp_size_test(42ul);
-  perform_single_value_warp_size_test(42ull);
-  perform_single_value_warp_size_test(user_type {4, 2});
+  perform_tests(42);
+  perform_tests(42u);
+  perform_tests(42ll);
+  perform_tests(42u);
+  perform_tests(42ul);
+  perform_tests(42ull);
+  perform_tests(user_type {4, 2});
 
   return 0;
 }

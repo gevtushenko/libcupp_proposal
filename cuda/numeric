@@ -116,16 +116,16 @@ public:
   __device__ inline _Tp
   operator ()(_Tp __val, _BinaryOperation __binary_op = {})
   {
-    const int bid = _IndexingPolicy::get_blck_id ();
     const int tid = _IndexingPolicy::get_thrd_id ();
-    const int lid = tid % warpSize;
+    const int lid = _IndexingPolicy::get_lane_id ();
+    const int wid = _IndexingPolicy::get_warp_id ();
 
-    auto __warp_reduce = _WarpReduceDependencyInjectionPolicy::construct_warp_reduce_object (block_shared_workspace + bid * warpSize);
+    auto __warp_reduce = _WarpReduceDependencyInjectionPolicy::construct_warp_reduce_object (block_shared_workspace + wid * warpSize);
     auto __warp_result = __warp_reduce (__val, __binary_op);
     __syncthreads ();
 
     if (lid == 0)
-      block_shared_workspace[bid] = __warp_result;
+      block_shared_workspace[wid] = __warp_result;
     __syncthreads ();
 
     for (int s = _IndexingPolicy::get_n_warp_in_block () / 2; s > 0; s >>= 1) {
