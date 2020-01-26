@@ -5,6 +5,7 @@
 
 #include <cuda_runtime.h>
 
+#include "cuda_benchmark.h"
 #include "cuda/numeric"
 
 template <typename data_type, int use_shared>
@@ -193,8 +194,10 @@ void perform_tests (const data_type &magical_value)
 
 class user_type
 {
+public:
   unsigned long long int x {};
   unsigned long long int y {};
+
 public:
   user_type () = default;
   __device__ __host__ user_type (int i) : x (i), y (0ull) {}
@@ -225,9 +228,72 @@ static_assert(cuda::warp_reduce<float>::use_shared == false);
 static_assert(cuda::warp_reduce<double>::use_shared == false);
 #endif
 
+class user_type_warp_shfl_reduce
+{
+public:
+  user_type_warp_shfl_reduce () = default;
+
+  template <typename _BinaryOperation>
+  __device__ user_type __reduce_value (user_type __val, _BinaryOperation __binary_op)
+  {
+    for (int s = warpSize / 2; s > 0; s >>= 1) {
+      unsigned long long new_x = __shfl_xor_sync(__FULL_WARP_MASK, __val.x, s, warpSize);
+      unsigned long long new_y = __shfl_xor_sync(__FULL_WARP_MASK, __val.y, s, warpSize);
+
+      __val = __binary_op(__val, user_type (new_x, new_y));
+    }
+    return __val;
+  }
+
+public:
+  static constexpr bool use_shared = false;
+};
+
+void perform_benchmark ()
+{
+  cuda_benchmark::controller controller;
+
+  user_type *input {};
+  user_type *output {};
+
+  const int warpSize = 32;
+
+  std::vector<user_type> cpu_input (warpSize);
+  cpu_input[11] = user_type (42);
+
+  cudaMalloc (&input, warpSize * sizeof (user_type));
+  cudaMalloc (&output, warpSize * sizeof (user_type));
+
+  cudaMemcpy (input, cpu_input.data (), warpSize * sizeof (user_type), cudaMemcpyHostToDevice);
+
+  controller.benchmark("warp reduce (user_type)", [=] __device__ (cuda_benchmark::state &state) {
+    user_type thread_value = input[threadIdx.x];
+    __shared__ char warp_workspace_data[32 * sizeof (user_type)];
+    user_type *warp_workspace = reinterpret_cast<user_type*> (warp_workspace_data);
+
+    for (auto _ : state)
+    {
+      cuda::warp_reduce<user_type> reduce (warp_workspace);
+      thread_value = reduce (thread_value);
+    }
+  });
+
+  controller.benchmark("warp reduce (user_type custom reduce policy)", [=] __device__ (cuda_benchmark::state &state) {
+    user_type thread_value = input[threadIdx.x];
+    for (auto _ : state)
+    {
+      cuda::warp_reduce<user_type, user_type_warp_shfl_reduce> reduce;
+      thread_value = reduce (thread_value);
+    }
+  });
+
+  cudaFree (output);
+  cudaFree (input);
+}
 
 int main ()
 {
+#if 0
   perform_tests(42);
   perform_tests(42u);
   perform_tests(42ll);
@@ -235,6 +301,9 @@ int main ()
   perform_tests(42ul);
   perform_tests(42ull);
   perform_tests(user_type {4, 2});
+#endif
+
+  perform_benchmark();
 
   return 0;
 }
