@@ -249,6 +249,8 @@ public:
   static constexpr bool use_shared = false;
 };
 
+#include "warp/warp_reduce.cuh"
+
 void perform_benchmark ()
 {
   cuda_benchmark::controller controller;
@@ -284,6 +286,17 @@ void perform_benchmark ()
     {
       cuda::warp_reduce<user_type, user_type_warp_shfl_reduce> reduce;
       thread_value = reduce (thread_value);
+    }
+  });
+
+  controller.benchmark("warp reduce (user_type cub)", [=] __device__ (cuda_benchmark::state &state) {
+    user_type thread_value = input[threadIdx.x];
+    typedef cub::WarpReduce<user_type> WarpReduce;
+    __shared__ typename WarpReduce::TempStorage temp_storage[1];
+
+    for (auto _ : state)
+    {
+      thread_value = WarpReduce(temp_storage[0]).Sum(thread_value);
     }
   });
 
