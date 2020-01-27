@@ -228,6 +228,7 @@ static_assert(cuda::warp_reduce<float>::use_shared == false, "Default policy Thi
 static_assert(cuda::warp_reduce<double>::use_shared == false, "Default policy This type should use shfl");
 #endif
 
+template<int warp_size=32>
 class user_type_warp_shfl_reduce
 {
 public:
@@ -236,9 +237,9 @@ public:
   template <typename _BinaryOperation>
   __device__ user_type __reduce_value (user_type __val, _BinaryOperation __binary_op)
   {
-    for (int s = warpSize / 2; s > 0; s >>= 1) {
-      unsigned long long new_x = __shfl_xor_sync(__FULL_WARP_MASK, __val.x, s, warpSize);
-      unsigned long long new_y = __shfl_xor_sync(__FULL_WARP_MASK, __val.y, s, warpSize);
+    for (int s = warp_size / 2; s > 0; s >>= 1) {
+      unsigned long long new_x = __shfl_xor_sync(__FULL_WARP_MASK, __val.x, s, warp_size);
+      unsigned long long new_y = __shfl_xor_sync(__FULL_WARP_MASK, __val.y, s, warp_size);
 
       __val = __binary_op(__val, user_type (new_x, new_y));
     }
@@ -284,7 +285,7 @@ void perform_benchmark ()
     user_type thread_value = input[threadIdx.x];
     for (auto _ : state)
     {
-      cuda::warp_reduce<user_type, user_type_warp_shfl_reduce> reduce;
+      cuda::warp_reduce<user_type, user_type_warp_shfl_reduce<32>> reduce;
       thread_value = reduce (thread_value);
     }
   });

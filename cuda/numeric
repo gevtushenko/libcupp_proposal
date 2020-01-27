@@ -101,15 +101,16 @@ public:
 };
 
 
+template <int warp_size=32>
 class __default_indexing_policy_1D {
 public:
   static __device__ int get_blck_id () { return blockIdx.x; }
   static __device__ int get_thrd_id () { return threadIdx.x; }
-  static __device__ int get_lane_id () { return threadIdx.x % warpSize; }
-  static __device__ int get_warp_id () { return threadIdx.x / warpSize; }
+  static __device__ int get_lane_id () { return threadIdx.x % warp_size; }
+  static __device__ int get_warp_id () { return threadIdx.x / warp_size; }
 
   static __device__ int get_n_thrd_in_block () { return blockDim.x; }
-  static __device__ int get_n_warp_in_block () { return get_n_thrd_in_block() / warpSize; }
+  static __device__ int get_n_warp_in_block () { return get_n_thrd_in_block() / warp_size; }
 
 };
 
@@ -124,7 +125,7 @@ public:
  */
 template<
     typename _Tp,
-    typename _IndexingPolicy=__default_indexing_policy_1D,
+    typename _IndexingPolicy=__default_indexing_policy_1D<32>,
     typename _WarpReduceDependencyInjectionPolicy=__warp_reduce_default_dependency_injector<_Tp, warp_reduce<_Tp>::use_shared>>
 class block_reduce {
   _Tp *block_shared_workspace;

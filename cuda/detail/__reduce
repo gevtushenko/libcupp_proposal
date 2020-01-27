@@ -25,7 +25,7 @@ public:
   __device__ _Tp operator ()(const _Tp &__lhs, const _Tp &__rhs) { return __lhs + __rhs; }
 };
 
-template <typename _Tp>
+template <typename _Tp, int warp_size=32>
 class __warp_shfl_reduce
 {
 public:
@@ -34,8 +34,8 @@ public:
   template <typename _BinaryOperation>
   __device__ _Tp __reduce_value (_Tp __val, _BinaryOperation __binary_op)
   {
-    for (int s = warpSize / 2; s > 0; s >>= 1) {
-      __val = __binary_op(__val, __shfl_xor_sync(__FULL_WARP_MASK, __val, s, warpSize));
+    for (int s = warp_size / 2; s > 0; s >>= 1) {
+      __val = __binary_op(__val, __shfl_xor_sync(__FULL_WARP_MASK, __val, s, warp_size));
     }
     return __val;
   }
@@ -44,7 +44,7 @@ public:
   static constexpr bool use_shared = false;
 };
 
-template <typename _Tp>
+template <typename _Tp, int warp_size=32>
 class __warp_shrd_reduce {
   _Tp *warp_shared_workspace;
 public:
@@ -58,7 +58,7 @@ public:
     warp_shared_workspace[lid] = __val;
     __syncwarp();
 
-    for (int s = warpSize / 2; s > 0; s >>= 1) {
+    for (int s = warp_size / 2; s > 0; s >>= 1) {
       if (lid < s) {
         warp_shared_workspace[lid] = __binary_op(warp_shared_workspace[lid], warp_shared_workspace[lid + s]);
       }
